@@ -10,9 +10,18 @@
 # If interested, see: http://git.io/sScXVg                    #
 ###############################################################
 
+# Discourse user: The user discourse runs under
 DISCOURSE_USER=
+
+# Discourse user home: The home directory of above user (the one containing .rvm)
 DISCOURSE_USERHOME=
+
+# Discourse directory: The directory that discourse install is located
 DISCOURSE_DIR=
+
+# Number of thin servers: This must match the number of entries in your nginx config's upstream block.
+# 4 is the default in discourse/config/nginx.sample.conf
+NUM_THIN_SERVERS=4
 
 pre_run_test() {
 	# Check for required commands
@@ -79,7 +88,7 @@ upgrade_discourse() {
 		bundle exec rake assets:precompile
 	
 	# Kill old processes
-	echo "\n\e[1;33mAttempting to kill processes...\e[0m\n"
+	echo -e "\n\e[1;33mAttempting to kill processes...\e[0m\n"
 	
 	if [ -n "${SIDEKIQ_PID}" -a "${SIDEKIQ_PID}" -gt 0 ] ; then
 		kill ${SIDEKIQ_PID};
@@ -106,7 +115,7 @@ upgrade_discourse() {
 	
 	echo -e "\e[1;33mRestarting bluepill...\e[0m"
 	# Restart bluepill
-	RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production RAILS_ROOT=${DISCOURSE_DIR} NUM_WEBS=2 \
+	RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production RAILS_ROOT=${DISCOURSE_DIR} NUM_WEBS=${NUM_THIN_SERVERS} \
 		${DISCOURSE_USERHOME}/.rvm/bin/bootup_bluepill --no-privileged -c ~/.bluepill load ${DISCOURSE_DIR}/config/discourse.pill
 		
 	echo -e "\n\e[1;32mUpgrade is complete. Reload NGINX now, if necessary, to complete upgrade.\e[0m"
