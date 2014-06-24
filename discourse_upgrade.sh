@@ -33,7 +33,7 @@ NUM_THIN_SERVERS=4
 pre_run_test() {
 	# Check for required commands
 	local ERR=0
-	for REQUIRED in git grep awk bundle ruby bootup_bluepill
+	for REQUIRED in git grep awk bundle ruby
 	do
 		if ! command -v $REQUIRED >/dev/null 2>&1 ; then
 			echo "This script requires the ${REQUIRED} command."
@@ -104,33 +104,42 @@ upgrade_discourse() {
 		echo "Sidekiq process not found."
 	fi
 	
-	if [ -n "${BLUEPILL_PID}" -a "${BLUEPILL_PID}" -gt 0 ] ; then
-		kill ${BLUEPILL_PID};
-		echo "Bluepill (pid:${BLUEPILL_PID}) killed."
-	else
-		echo "Bluepill process not found."
+	# Kill bluepill if we're using thin
+	if [ "${APP_SERVER}" == "thin" ] ; then
+		if [ -n "${BLUEPILL_PID}" -a "${BLUEPILL_PID}" -gt 0 ] ; then
+			kill ${BLUEPILL_PID};
+			echo "Bluepill (pid:${BLUEPILL_PID}) killed."
+		else
+			echo "Bluepill process not found."
+		fi
 	fi
 	
 	for PID in ${APP_SERVER_PID} ; do
 		if [ -n "${PID}" -a "${PID}" -gt 0 ] ; then
 			kill $PID;
-			echo "App server (pid:${PID}) killed."
+			
+			if [ $? -eq 0 ] ; then
+				echo "App server (pid:${PID}) killed."
+			else
+				echo "Tried to kill app server pid:${PID}, but failed."
+			fi
 		else
 			echo "App server process not found."
 		fi
 	done
 	
-	echo -e "\e[1;33mRestarting app server...\e[0m"
 	# Restart app server
+	echo -e "\e[1;33mRestarting app server...\e[0m"
 	
 	case "$APP_SERVER" in
-		"unicorn" ) RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production unicorn_rails -c config/unicorn.conf.rb -D -E production
+		"unicorn" ) RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production RAILS_ROOT=${DISCOURSE_DIR} \
+						unicorn_rails -c ${DISCOURSE_DIR}/config/unicorn.conf.rb -D -E production
 			;;
 		"thin" )	RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production RAILS_ROOT=${DISCOURSE_DIR} NUM_WEBS=${NUM_THIN_SERVERS} \
-				${DISCOURSE_USERHOME}/.rvm/bin/bootup_bluepill --no-privileged -c ~/.bluepill load ${DISCOURSE_DIR}/config/discourse.pill
+						${DISCOURSE_USERHOME}/.rvm/bin/bootup_bluepill --no-privileged -c ~/.bluepill load ${DISCOURSE_DIR}/config/discourse.pill
 			;;	
 	esac
-		
+	
 	echo -e "\n\e[1;32mUpgrade is complete. Reload NGINX now, if necessary, to complete upgrade.\e[0m"
 }
 
@@ -141,6 +150,7 @@ echo "The following are your configuration values: "
 echo "Discourse User: ${DISCOURSE_USER}"
 echo "Discourse User Home Directory: ${DISCOURSE_USERHOME}"
 echo "Discourse Directory: ${DISCOURSE_DIR}"
+echo "App Server: ${APP_SERVER}"
 
 echo 
 read -p "Are these values correct? [Y/n]: " YN
