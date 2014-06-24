@@ -19,8 +19,15 @@ DISCOURSE_USERHOME=
 # Discourse directory: The directory that discourse install is located
 DISCOURSE_DIR=
 
-# Number of thin servers: This must match the number of entries in your nginx config's upstream block.
+# App Server Selection
+# Options:
+# unicorn = Unicorn; Remember to configure discourse/config/unicorn.conf.rb and nginx upstream block!
+# thin = Bluepill/Thin
+APP_SERVER=unicorn
+
+# Number of thin server processes: This must match the number of entries in your nginx config's upstream block.
 # 4 is the default in discourse/config/nginx.sample.conf
+# For unicorn, the equivalent of this is configured with "worker_processes" in discourse/config/unicorn.conf.rb
 NUM_THIN_SERVERS=4
 
 pre_run_test() {
@@ -58,9 +65,9 @@ upgrade_discourse() {
 	cd ${DISCOURSE_DIR}
 	
 	# get pids of sidekik, bluepill, and thin server sockets
-	 local SIDEKIQ_PID=`ps -fu ${DISCOURSE_USER} | grep sidekiq.*busy | grep -v grep | awk '{print $2}'`
-	local BLUEPILL_PID=`ps -fu ${DISCOURSE_USER} | grep bluepilld | grep -v grep | awk '{print $2}'`
-	local THINSOCK_PID=`ps -fu ${DISCOURSE_USER} | grep thin | grep -v grep | awk '{print $2}'`
+	   local SIDEKIQ_PID=`ps -fu ${DISCOURSE_USER} | grep sidekiq.*busy | grep -v grep | awk '{print $2}'`
+	  local BLUEPILL_PID=`ps -fu ${DISCOURSE_USER} | grep bluepilld | grep -v grep | awk '{print $2}'`
+	local APP_SERVER_PID=`ps -fu ${DISCOURSE_USER} | grep ${APP_SERVER} | grep -v grep | awk '{print $2}'`
 	
 	# get latest code
 	echo -e "\e[1;33mGetting latest discourse code...\e[0m"
@@ -104,19 +111,25 @@ upgrade_discourse() {
 		echo "Bluepill process not found."
 	fi
 	
-	for PID in ${THINSOCK_PID} ; do
+	for PID in ${APP_SERVER_PID} ; do
 		if [ -n "${PID}" -a "${PID}" -gt 0 ] ; then
 			kill $PID;
-			echo "Thin server (pid:${PID}) killed."
+			echo "App server (pid:${PID}) killed."
 		else
-			echo "Thin server process not found."
+			echo "App server process not found."
 		fi
 	done
 	
-	echo -e "\e[1;33mRestarting bluepill...\e[0m"
-	# Restart bluepill
-	RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production RAILS_ROOT=${DISCOURSE_DIR} NUM_WEBS=${NUM_THIN_SERVERS} \
-		${DISCOURSE_USERHOME}/.rvm/bin/bootup_bluepill --no-privileged -c ~/.bluepill load ${DISCOURSE_DIR}/config/discourse.pill
+	echo -e "\e[1;33mRestarting app server...\e[0m"
+	# Restart app server
+	
+	case "$APP_SERVER" in
+		"unicorn" ) RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production unicorn_rails -c config/unicorn.conf.rb -D -E production
+			;;
+		"thin" )	RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production RAILS_ROOT=${DISCOURSE_DIR} NUM_WEBS=${NUM_THIN_SERVERS} \
+				${DISCOURSE_USERHOME}/.rvm/bin/bootup_bluepill --no-privileged -c ~/.bluepill load ${DISCOURSE_DIR}/config/discourse.pill
+			;;	
+	esac
 		
 	echo -e "\n\e[1;32mUpgrade is complete. Reload NGINX now, if necessary, to complete upgrade.\e[0m"
 }
