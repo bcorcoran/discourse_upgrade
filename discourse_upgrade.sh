@@ -19,15 +19,8 @@ DISCOURSE_USERHOME=
 # Discourse directory: The directory that discourse install is located
 DISCOURSE_DIR=
 
-# App Server Selection
-# Options:
-# unicorn = Unicorn; Remember to configure discourse/config/unicorn.conf.rb and nginx upstream block!
-# thin = Bluepill/Thin
-APP_SERVER=unicorn
-
 # Number of thin server processes: This must match the number of entries in your nginx config's upstream block.
 # 4 is the default in discourse/config/nginx.sample.conf
-# For unicorn, the equivalent of this is configured with "worker_processes" in discourse/config/unicorn.conf.rb
 NUM_THIN_SERVERS=4
 
 pre_run_test() {
@@ -67,7 +60,7 @@ upgrade_discourse() {
 	# get pids of sidekik, bluepill, and thin server sockets
 	   local SIDEKIQ_PID=`ps -fu ${DISCOURSE_USER} | grep sidekiq.*busy | grep -v grep | awk '{print $2}'`
 	  local BLUEPILL_PID=`ps -fu ${DISCOURSE_USER} | grep bluepilld | grep -v grep | awk '{print $2}'`
-	local APP_SERVER_PID=`ps -fu ${DISCOURSE_USER} | grep ${APP_SERVER} | grep -v grep | awk '{print $2}'`
+	local APP_SERVER_PID=`ps -fu ${DISCOURSE_USER} | grep thin | grep -v grep | awk '{print $2}'`
 	
 	# get latest code
 	echo -e "\e[1;33mGetting latest discourse code...\e[0m"
@@ -131,26 +124,19 @@ upgrade_discourse() {
 	# Restart app server
 	echo -e "\e[1;33mRestarting app server...\e[0m"
 	
-	case "$APP_SERVER" in
-		"unicorn" ) RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production RAILS_ROOT=${DISCOURSE_DIR} \
-						unicorn_rails -c ${DISCOURSE_DIR}/config/unicorn.conf.rb -D -E production
-			;;
-		"thin" )	RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production RAILS_ROOT=${DISCOURSE_DIR} NUM_WEBS=${NUM_THIN_SERVERS} \
-						${DISCOURSE_USERHOME}/.rvm/bin/bootup_bluepill --no-privileged -c ~/.bluepill load ${DISCOURSE_DIR}/config/discourse.pill
-			;;	
-	esac
+	RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production RAILS_ROOT=${DISCOURSE_DIR} NUM_WEBS=${NUM_THIN_SERVERS} \
+		${DISCOURSE_USERHOME}/.rvm/bin/bootup_bluepill --no-privileged -c ~/.bluepill load ${DISCOURSE_DIR}/config/discourse.pill
 	
-	echo -e "\n\e[1;32mUpgrade is complete. Reload NGINX now, if necessary, to complete upgrade.\e[0m"
+	echo -e "\n\e[1;32mUpgrade is complete. Reload web server now, if necessary.\e[0m"
 }
 
-echo -e "\e[1;33;42mDiscourse Upgrade Script\e[0m\n"
+echo -e "\e[1;33;42mDiscourse Upgrade Script (thin/bluepill edition)\e[0m\n"
 
 echo "The following are your configuration values: "
 
 echo "Discourse User: ${DISCOURSE_USER}"
 echo "Discourse User Home Directory: ${DISCOURSE_USERHOME}"
 echo "Discourse Directory: ${DISCOURSE_DIR}"
-echo "App Server: ${APP_SERVER}"
 
 echo 
 read -p "Are these values correct? [Y/n]: " YN
