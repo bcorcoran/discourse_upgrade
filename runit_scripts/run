@@ -1,0 +1,10 @@
+#!/bin/sh
+
+export RAILS_ENV=production
+export RUBY_GC_MALLOC_LIMIT=90000000
+export RAILS_ROOT=/path/to/discourse
+
+cd $RAILS_ROOT
+
+exec 2>&1
+exec chpst -u user:group /path/to/.rvm/wrappers/wrapper_name/bundle exec unicorn -c /path/to/unicorn.conf.rb -E production

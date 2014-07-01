@@ -22,13 +22,7 @@ DISCOURSE_DIR=
 # App Server Selection
 # Options:
 # unicorn = Unicorn; Remember to configure discourse/config/unicorn.conf.rb and nginx upstream block!
-# thin = Bluepill/Thin
 APP_SERVER=unicorn
-
-# Number of thin server processes: This must match the number of entries in your nginx config's upstream block.
-# 4 is the default in discourse/config/nginx.sample.conf
-# For unicorn, the equivalent of this is configured with "worker_processes" in discourse/config/unicorn.conf.rb
-NUM_THIN_SERVERS=4
 
 pre_run_test() {
 	# Check for required commands
@@ -64,10 +58,8 @@ upgrade_discourse() {
 	# Go to discourse dir
 	cd ${DISCOURSE_DIR}
 	
-	# get pids of sidekik, bluepill, and thin server sockets
-	   local SIDEKIQ_PID=`ps -fu ${DISCOURSE_USER} | grep sidekiq.*busy | grep -v grep | awk '{print $2}'`
-	  local BLUEPILL_PID=`ps -fu ${DISCOURSE_USER} | grep bluepilld | grep -v grep | awk '{print $2}'`
-	local APP_SERVER_PID=`ps -fu ${DISCOURSE_USER} | grep ${APP_SERVER} | grep -v grep | awk '{print $2}'`
+	# get pid of unicorn master
+	local UNICORN_PID=`ps -fu ${DISCOURSE_USER} | grep 'unicorn master' | grep -v grep | awk '{print $2}'`
 	
 	# get latest code
 	echo -e "\e[1;33mGetting latest discourse code...\e[0m"
@@ -95,50 +87,21 @@ upgrade_discourse() {
 		bundle exec rake assets:precompile
 	
 	# Kill old processes
-	echo -e "\n\e[1;33mAttempting to kill processes...\e[0m\n"
+	echo -e "\n\e[1;33mAttempting to kill unicorn...\e[0m\n"
 	
-	if [ -n "${SIDEKIQ_PID}" -a "${SIDEKIQ_PID}" -gt 0 ] ; then
-		kill ${SIDEKIQ_PID};
-		echo "Sidekiq (pid:${SIDEKIQ_PID}) killed."
-	else
-		echo "Sidekiq process not found."
-	fi
-	
-	# Kill bluepill if we're using thin
-	if [ "${APP_SERVER}" == "thin" ] ; then
-		if [ -n "${BLUEPILL_PID}" -a "${BLUEPILL_PID}" -gt 0 ] ; then
-			kill ${BLUEPILL_PID};
-			echo "Bluepill (pid:${BLUEPILL_PID}) killed."
-		else
-			echo "Bluepill process not found."
-		fi
-	fi
-	
-	for PID in ${APP_SERVER_PID} ; do
+	for PID in ${UNICORN_PID} ; do
 		if [ -n "${PID}" -a "${PID}" -gt 0 ] ; then
 			kill $PID;
 			
 			if [ $? -eq 0 ] ; then
-				echo "App server (pid:${PID}) killed."
+				echo "Unicorn (pid:${PID}) killed. Runit should catch up in a bit."
 			else
 				echo "Tried to kill app server pid:${PID}, but failed."
 			fi
 		else
-			echo "App server process not found."
+			echo "Unicorn process not found."
 		fi
 	done
-	
-	# Restart app server
-	echo -e "\e[1;33mRestarting app server...\e[0m"
-	
-	case "$APP_SERVER" in
-		"unicorn" ) RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production RAILS_ROOT=${DISCOURSE_DIR} \
-						unicorn_rails -c ${DISCOURSE_DIR}/config/unicorn.conf.rb -D -E production
-			;;
-		"thin" )	RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production RAILS_ROOT=${DISCOURSE_DIR} NUM_WEBS=${NUM_THIN_SERVERS} \
-						${DISCOURSE_USERHOME}/.rvm/bin/bootup_bluepill --no-privileged -c ~/.bluepill load ${DISCOURSE_DIR}/config/discourse.pill
-			;;	
-	esac
 	
 	echo -e "\n\e[1;32mUpgrade is complete. Reload NGINX now, if necessary, to complete upgrade.\e[0m"
 }
