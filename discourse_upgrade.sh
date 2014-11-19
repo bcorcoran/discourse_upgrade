@@ -76,7 +76,8 @@ upgrade_discourse() {
 	echo -e "\e[1;33mRunning discourse upgrades (bundle install, migration, asset compile)...\e[0m"
 	
 	# Bundle install
-	bundle install --deployment --without test --without development
+	RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production \
+		bundle install --deployment --without test --without development
 	
 	# Run migration
 	RUBY_GC_MALLOC_LIMIT=90000000 RAILS_ENV=production \
